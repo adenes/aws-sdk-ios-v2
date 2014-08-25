@@ -535,7 +535,8 @@ NSString *const AWSQueryParamBuilderErrorDomain = @"com.amazonaws.AWSQueryParamB
     }
 
     __block NSError *blockErr = nil;
-    [structure enumerateKeysAndObjectsUsingBlock:^(NSString *xmlName, id value, BOOL *stop) {
+    __block NSDictionary *blockStructure = structure;
+    [blockStructure enumerateKeysAndObjectsUsingBlock:^(NSString *xmlName, id value, BOOL *stop) {
         if ([xmlName isEqualToString:@"$"]) {
             //TODO: do something
         } else {
