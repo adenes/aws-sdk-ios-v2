@@ -13,7 +13,7 @@
  * permissions and limitations under the License.
  */
 
-#import "AZCategory.h"
+#import "AWSCategory.h"
 #import "AWSMobileAnalyticsDefaultSessionClient.h"
 #import "AWSMobileAnalyticsSession.h"
 #import "AWSMobileAnalyticsContext.h"
@@ -24,19 +24,19 @@
 #import "AWSMobileAnalyticsPausedSessionState.h"
 #import "AWSMobileAnalyticsSessionClientState.h"
 #import "AWSMobileAnalyticsDelayedBlock.h"
-#import "AZLogging.h"
+#import "AWSLogging.h"
 
 //Event Type Constants ---------------------------
-NSString *const SESSION_START_EVENT_TYPE = @"_session.start";
-NSString *const SESSION_STOP_EVENT_TYPE = @"_session.stop";
-NSString *const SESSION_PAUSE_EVENT_TYPE = @"_session.pause";
-NSString *const SESSION_RESUME_EVENT_TYPE = @"_session.resume";
+NSString *const AWSSessionStartEventType = @"_session.start";
+NSString *const AWSSessionStopEventType = @"_session.stop";
+NSString *const AWSSessionPauseEventType = @"_session.pause";
+NSString *const AWSSessionResumeEventType = @"_session.resume";
 
 //Event Attribute/Metric Key Constants -----------
-NSString *const SESSION_ID_ATTRIBUTE_KEY = @"_session.id";
-NSString *const SESSION_DURATION_METRIC_KEY = @"_session.duration";
-NSString *const SESSION_START_TIME_ATTRIBUTE_KEY = @"_session.startTime";
-NSString *const SESSION_END_TIME_ATTRIBUTE_KEY = @"_session.stopTime";
+NSString *const AWSSessionIDAttributeKey = @"_session.id";
+NSString *const AWSSessionDurationMetricKey = @"_session.duration";
+NSString *const AWSSessionStartTimeAttributeKey = @"_session.startTime";
+NSString *const AWSSessionEndTimeAttributeKey = @"_session.stopTime";
 
 //Session State Constants ------------------------
 static AWSMobileAnalyticsInactiveSessionState* INACTIVE_SESSION_STATE;
@@ -98,8 +98,8 @@ static AWSMobileAnalyticsActiveSessionState* ACTIVE_SESSION_STATE;
         
         self.state = (self.session == nil) ? INACTIVE_SESSION_STATE : PAUSED_SESSION_STATE;
         
-        self.sessionRestartDelayMs = [[self.context configuration] longForKey:KeySessionRestartDelay withOptValue:ValueSessionRestartDelay];
-        self.sessionResumeDelayMs = [[self.context configuration] longForKey:KeySessionResumeDelay withOptValue:ValueSessionResumeDelay];
+        self.sessionRestartDelayMs = [[self.context configuration] longForKey:AWSKeySessionRestartDelay withOptValue:AWSValueSessionRestartDelay];
+        self.sessionResumeDelayMs = [[self.context configuration] longForKey:AWSKeySessionResumeDelay withOptValue:AWSValueSessionResumeDelay];
         
         //- FG/BG Lifecycle hooks --------------------------------=
         __weak AWSMobileAnalyticsDefaultSessionClient* client = self;
@@ -182,23 +182,23 @@ static AWSMobileAnalyticsActiveSessionState* ACTIVE_SESSION_STATE;
     
     // Generate new session object
     self.session = [AWSMobileAnalyticsSession sessionWithContext:self.context];
-    AZLogVerbose( @"Firing Session Event: Start");
+    AWSLogVerbose( @"Firing Session Event: Start");
     
     // Prepare Event Tagging
-    [self.eventClient addGlobalAttribute:[self.session sessionId] forKey:SESSION_ID_ATTRIBUTE_KEY];
+    [self.eventClient addGlobalAttribute:[self.session sessionId] forKey:AWSSessionIDAttributeKey];
     
     
     
     //latest ERS Server's API Change, SessionStartTime need to be included in every request
-    NSString* sessionStartTimeString = [self.session.startTime az_stringValue:AZDateISO8601DateFormat3];
-    [self.eventClient addGlobalAttribute:sessionStartTimeString forKey:SESSION_START_TIME_ATTRIBUTE_KEY];
+    NSString* sessionStartTimeString = [self.session.startTime aws_stringValue:AWSDateISO8601DateFormat3];
+    [self.eventClient addGlobalAttribute:sessionStartTimeString forKey:AWSSessionStartTimeAttributeKey];
     
     // Fire Session start Event
     
-    id<AWSMobileAnalyticsInternalEvent> startEvent = [self.eventClient createInternalEvent:SESSION_START_EVENT_TYPE];
+    id<AWSMobileAnalyticsInternalEvent> startEvent = [self.eventClient createInternalEvent:AWSSessionStartEventType];
     [self.eventClient recordEvent:startEvent andApplyGlobalAttributes:YES];
     
-    AZLogInfo( "Session Started.");
+    AWSLogInfo( "Session Started.");
 }
 
 -(void)endCurrentSession{
@@ -207,42 +207,42 @@ static AWSMobileAnalyticsActiveSessionState* ACTIVE_SESSION_STATE;
     }
     
     // Fire Session stop Event
-    AZLogVerbose( @"Firing Session Event: Stop");
-    NSString* sessionStartTimeString = [self.session.startTime az_stringValue:AZDateISO8601DateFormat3];
-    NSString* sessionStopTimeString = [self.session.stopTime az_stringValue:AZDateISO8601DateFormat3];
-    id<AWSMobileAnalyticsInternalEvent> stopEvent = [self.eventClient createInternalEvent:SESSION_STOP_EVENT_TYPE];
-    [stopEvent addMetric:[NSNumber numberWithUnsignedLongLong:[self.session timeDurationInMillis]] forKey:SESSION_DURATION_METRIC_KEY];
-    [stopEvent addAttribute:self.session.sessionId forKey:SESSION_ID_ATTRIBUTE_KEY];
-    [stopEvent addAttribute:sessionStartTimeString forKey:SESSION_START_TIME_ATTRIBUTE_KEY];
-    [stopEvent addAttribute:sessionStopTimeString forKey:SESSION_END_TIME_ATTRIBUTE_KEY];
+    AWSLogVerbose( @"Firing Session Event: Stop");
+    NSString* sessionStartTimeString = [self.session.startTime aws_stringValue:AWSDateISO8601DateFormat3];
+    NSString* sessionStopTimeString = [self.session.stopTime aws_stringValue:AWSDateISO8601DateFormat3];
+    id<AWSMobileAnalyticsInternalEvent> stopEvent = [self.eventClient createInternalEvent:AWSSessionStopEventType];
+    [stopEvent addMetric:[NSNumber numberWithUnsignedLongLong:[self.session timeDurationInMillis]] forKey:AWSSessionDurationMetricKey];
+    [stopEvent addAttribute:self.session.sessionId forKey:AWSSessionIDAttributeKey];
+    [stopEvent addAttribute:sessionStartTimeString forKey:AWSSessionStartTimeAttributeKey];
+    [stopEvent addAttribute:sessionStopTimeString forKey:AWSSessionEndTimeAttributeKey];
     [self.eventClient recordEvent:stopEvent andApplyGlobalAttributes:YES];
     
     // TearDown Event Tagging
-    [self.eventClient removeGlobalAttributeForKey:SESSION_ID_ATTRIBUTE_KEY];
+    [self.eventClient removeGlobalAttributeForKey:AWSSessionIDAttributeKey];
     
     // Kill current session object
     self.session = nil;
-    AZLogInfo( "Session Stopped.");
+    AWSLogInfo( "Session Stopped.");
     
     [self.deliveryClient forceDeliveryAndWaitForCompletion:NO];
 }
 
 -(void)pauseCurrentSession{
     [self.session pause];
-    AZLogVerbose( @"Firing Session Event: Pause");
-    id<AWSMobileAnalyticsInternalEvent> pauseEvent = [self.eventClient createInternalEvent:SESSION_PAUSE_EVENT_TYPE];
-    [pauseEvent addMetric:[NSNumber numberWithUnsignedLongLong:[self.session timeDurationInMillis]] forKey:SESSION_DURATION_METRIC_KEY];
+    AWSLogVerbose( @"Firing Session Event: Pause");
+    id<AWSMobileAnalyticsInternalEvent> pauseEvent = [self.eventClient createInternalEvent:AWSSessionPauseEventType];
+    [pauseEvent addMetric:[NSNumber numberWithUnsignedLongLong:[self.session timeDurationInMillis]] forKey:AWSSessionDurationMetricKey];
     [self.eventClient recordEvent:pauseEvent andApplyGlobalAttributes:YES];
-    AZLogInfo( "Session Paused.");    
+    AWSLogInfo( "Session Paused.");    
 }
 
 -(void)resumeCurrentSession{
    
     [self.session resume];
-    AZLogVerbose( @"Firing Session Event: Resume");
-    id<AWSMobileAnalyticsInternalEvent> resumeEvent = [self.eventClient createInternalEvent:SESSION_RESUME_EVENT_TYPE];
+    AWSLogVerbose( @"Firing Session Event: Resume");
+    id<AWSMobileAnalyticsInternalEvent> resumeEvent = [self.eventClient createInternalEvent:AWSSessionResumeEventType];
     [self.eventClient recordEvent:resumeEvent andApplyGlobalAttributes:YES];
-    AZLogInfo( "Session Resumed.");
+    AWSLogInfo( "Session Resumed.");
 }
 
 
@@ -325,7 +325,7 @@ static AWSMobileAnalyticsActiveSessionState* ACTIVE_SESSION_STATE;
         
         // execute our delayed block in the background queue so that apple
         // will allow this code to run even though the app is in the background
-        AIBackgroundQueue* queue = [AIBackgroundQueue emptyQueue];
+        AWSBackgroundQueue* queue = [AWSBackgroundQueue emptyQueue];
         [queue addBackgroundTaskUsingBlock:^(void) {
             [client.delayedBlock execute];
         }];

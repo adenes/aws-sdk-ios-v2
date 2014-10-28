@@ -13,16 +13,17 @@
  * permissions and limitations under the License.
  */
 
+#import "Bolts.h"
 #import "AWSMobileAnalyticsDefaultHttpClient.h"
 #import "AWSCore.h"
-#import "AZCategory.h"
 #import "AWSMobileAnalyticsInstanceIdInterceptor.h"
 #import "AWSMobileAnalyticsClientContextInterceptor.h"
 #import "GZIP.h"
 #import "AWSMobileAnalyticsDefaultSessionClient.h"
-#import "AZLogging.h"
+#import "AWSLogging.h"
+#import "AWSMobileAnalyticsERS.h"
 
-NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoopMode";
+NSString *const AWSMobileAnalyticsDefaultRunLoopMode = @"com.amazonaws.mobile-analytics.AWSMobileAnalyticsDefaultRunLoopMode";
 
 @implementation AWSMobileAnalyticsDefaultHttpClient
 
@@ -77,15 +78,15 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
         [interceptor before:theRequest];
     }
     
-    AWSEventRecorderService *ers = self.eventRecorderService;
+    AWSMobileAnalyticsERS *ers = self.ers;
     if (ers == nil) {
-        AZLogError( @"AWSEventRecorderService is nil! ");
+        AWSLogError( @"AWSMobileAnalyticsERS is nil! ");
     }
     
-    AWSEventRecorderServicePutEventsInput *putEventInput = [AWSEventRecorderServicePutEventsInput new];
+    AWSMobileAnalyticsERSPutEventsInput *putEventInput = [AWSMobileAnalyticsERSPutEventsInput new];
     
     //the client-Context-id in the header  should be moved to Client-Context
-    NSString *clientContextString = [[theRequest headers] objectForKey:CLIENT_CONTEXT_HEADER];
+    NSString *clientContextString = [[theRequest headers] objectForKey:AWSMobileAnalyticsClientContextHeader];
     NSMutableDictionary *clientContextDic = [[NSJSONSerialization JSONObjectWithData: [clientContextString dataUsingEncoding:NSUTF8StringEncoding]
                                                                              options:kNilOptions
                                                                                error:NULL] mutableCopy];
@@ -109,8 +110,8 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
         NSMutableArray *parsedEventsArray = [NSMutableArray new];
         for (NSDictionary *event in sourceEventsArray) {
             
-            AWSEventRecorderServiceEvent *serviceEvent = [AWSEventRecorderServiceEvent new];
-            AWSEventRecorderServiceSession *serviceSession = [AWSEventRecorderServiceSession new];
+            AWSMobileAnalyticsERSEvent *serviceEvent = [AWSMobileAnalyticsERSEvent new];
+            AWSMobileAnalyticsERSSession *serviceSession = [AWSMobileAnalyticsERSSession new];
             
             //process the attributes
             NSMutableDictionary *mutableAttributesDic = [event[@"attributes"] mutableCopy];
@@ -118,19 +119,19 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
             serviceEvent.version = mutableAttributesDic[@"ver"];
             [mutableAttributesDic removeObjectForKey:@"ver"];
             
-            serviceSession.id = mutableAttributesDic[SESSION_ID_ATTRIBUTE_KEY];
-            [mutableAttributesDic removeObjectForKey:SESSION_ID_ATTRIBUTE_KEY];
+            serviceSession.id = mutableAttributesDic[AWSSessionIDAttributeKey];
+            [mutableAttributesDic removeObjectForKey:AWSSessionIDAttributeKey];
             
-            serviceSession.startTimestamp = mutableAttributesDic[SESSION_START_TIME_ATTRIBUTE_KEY];
-            [mutableAttributesDic removeObjectForKey:SESSION_START_TIME_ATTRIBUTE_KEY];
+            serviceSession.startTimestamp = mutableAttributesDic[AWSSessionStartTimeAttributeKey];
+            [mutableAttributesDic removeObjectForKey:AWSSessionStartTimeAttributeKey];
             
             //move sessionStop time attribute session section
-            serviceSession.stopTimestamp = mutableAttributesDic[SESSION_END_TIME_ATTRIBUTE_KEY];
-            [mutableAttributesDic removeObjectForKey:SESSION_END_TIME_ATTRIBUTE_KEY];
+            serviceSession.stopTimestamp = mutableAttributesDic[AWSSessionEndTimeAttributeKey];
+            [mutableAttributesDic removeObjectForKey:AWSSessionEndTimeAttributeKey];
             
             //move session duration Time metrics to session section
-            serviceSession.duration = mutableMetricsDic[SESSION_DURATION_METRIC_KEY];
-            [mutableMetricsDic removeObjectForKey:SESSION_DURATION_METRIC_KEY];
+            serviceSession.duration = mutableMetricsDic[AWSSessionDurationMetricKey];
+            [mutableMetricsDic removeObjectForKey:AWSSessionDurationMetricKey];
             
             serviceEvent.session = serviceSession;
             serviceEvent.attributes = mutableAttributesDic;
@@ -138,7 +139,7 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
             
             //process others
             serviceEvent.eventType = event[@"event_type"];
-            serviceEvent.timestamp = [[NSDate date] az_stringValue:AZDateISO8601DateFormat3];
+            serviceEvent.timestamp = [[NSDate date] aws_stringValue:AWSDateISO8601DateFormat3];
         
             
             
@@ -147,17 +148,17 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
         putEventInput.events = parsedEventsArray;
     }
     
+    //Attach the request to the response
+    id<AWSMobileAnalyticsRequest> request = [[AWSMobileAnalyticsDefaultRequest alloc] init];
+    [request setUrl:ers.configuration.URL];
+    response.originatingRequest = request;
     
     NSDate* requestStartDate = [NSDate date];
     [[[ers putEvents:putEventInput] continueWithBlock:^id(BFTask *task) {
         
         NSDictionary *resultDictionary = nil;
         if (task.error) {
-            if (task.error.domain != AWSEventRecorderServiceErrorDomain || task.error.domain != AWSGeneralErrorDomain) {
-                //It is client side error, assign the error and return immediately
-                response.error = task.error;
-                return nil;
-            }
+            response.error = task.error;
             resultDictionary = task.error.userInfo;
         } else {
             if ([task.result isKindOfClass:[NSDictionary class]]) {
@@ -198,12 +199,12 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
 //    int attempts = 1;
 //    int maxAttempts = (theRetries > 0) ? theRetries + 1 : 1;
 //    
-//    AZLogDebug( @"Will attempt the request a maximum of %d times", maxAttempts);
+//    AWSLogDebug( @"Will attempt the request a maximum of %d times", maxAttempts);
 //    NSTimeInterval totalRequestTime = 0.0;
 //    while (attempts <= maxAttempts) {
 //        
 //        NSDate* requestStartDate = [NSDate date];
-//        AZLogDebug( @"Attempt %d of %d", attempts, maxAttempts);
+//        AWSLogDebug( @"Attempt %d of %d", attempts, maxAttempts);
 //        
 //        //Attach the request to the response
 //        response.originatingRequest = theRequest;
@@ -235,7 +236,7 @@ NSString *const insightsDefaultRunLoopMode = @"com.amazon.insights.DefaultRunLoo
 //        }
 //        
 //        NSTimeInterval elapsedTime = [[NSDate date] timeIntervalSinceDate:requestStartDate];
-//        AZLogDebug( @"Time of request %f", elapsedTime);
+//        AWSLogDebug( @"Time of request %f", elapsedTime);
 //        totalRequestTime += elapsedTime;
 //        
 //        if (response.didTimeout) {
